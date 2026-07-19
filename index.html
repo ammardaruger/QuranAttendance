@@ -177,6 +177,26 @@ const STATUS_LABEL = { present: "Present", absent: "Absent", holiday: "Holiday" 
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyForm = () => ({ name: "", status: "present", duration: "", date: today() });
 
+// Normalize any date the API returns (plain yyyy-mm-dd, ISO timestamp,
+// or locale string) to yyyy-mm-dd using the browser's local timezone.
+// Internal dates are always yyyy-mm-dd so string comparison sorts/filters correctly.
+const pad2 = (n) => String(n).padStart(2, "0");
+function normalizeDate(v) {
+  const s = String(v || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+  return s;
+}
+
+// Display format: DD/MM/YYYY
+function displayDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 const initials = (name) =>
   name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
@@ -205,12 +225,12 @@ function generatePdf(kind, label, rows, range) {
   doc.setTextColor(60, 68, 80);
   doc.setFontSize(9);
   let y = 34;
-  const rangeText = range.from && range.to ? `${range.from} to ${range.to}`
-    : range.from ? `from ${range.from}`
-    : range.to ? `up to ${range.to}`
+  const rangeText = range.from && range.to ? `${displayDate(range.from)} to ${displayDate(range.to)}`
+    : range.from ? `from ${displayDate(range.from)}`
+    : range.to ? `up to ${displayDate(range.to)}`
     : "All dates";
   doc.text(`Period: ${rangeText}`, 14, y);
-  doc.text(`Generated: ${new Date().toISOString().slice(0, 10)}`, pageW - 14, y, { align: "right" });
+  doc.text(`Generated: ${displayDate(new Date().toISOString().slice(0, 10))}`, pageW - 14, y, { align: "right" });
 
   // Summary
   const s = { present: 0, absent: 0, holiday: 0, minutes: 0 };
@@ -239,8 +259,8 @@ function generatePdf(kind, label, rows, range) {
     : [["Date", "Student", "Attendance", "Minutes"]];
   const body = sorted.map((r) => (
     kind === "student"
-      ? [r.date, r.location, (STATUS_LABEL[r.status] || r.status), r.status === "present" ? String(r.duration) : "-"]
-      : [r.date, r.name, (STATUS_LABEL[r.status] || r.status), r.status === "present" ? String(r.duration) : "-"]
+      ? [displayDate(r.date), r.location, (STATUS_LABEL[r.status] || r.status), r.status === "present" ? String(r.duration) : "-"]
+      : [displayDate(r.date), r.name, (STATUS_LABEL[r.status] || r.status), r.status === "present" ? String(r.duration) : "-"]
   ));
 
   doc.autoTable({
@@ -347,7 +367,8 @@ function AttendanceDashboard() {
     try {
       const data = await api("GET");
       if (data.ok) {
-        setRecords(data.records.sort((a, b) => Number(b.id) - Number(a.id)));
+        const cleaned = data.records.map((r) => ({ ...r, date: normalizeDate(r.date) }));
+        setRecords(cleaned.sort((a, b) => Number(b.id) - Number(a.id)));
       } else {
         setError("Could not load records: " + (data.error || "unknown error"));
       }
@@ -455,7 +476,7 @@ function AttendanceDashboard() {
             <tr key={r.id}>
               {view !== "name" && <td className="fw-semibold">{r.name}</td>}
               {view !== "location" && <td>{r.location}</td>}
-              <td className="text-secondary text-nowrap">{r.date}</td>
+              <td className="text-secondary text-nowrap">{displayDate(r.date)}</td>
               <td>
                 <span className={"badge rounded-pill " + (STATUS_BADGE[r.status] || "text-bg-secondary")}>
                   {STATUS_LABEL[r.status] || r.status}
@@ -606,7 +627,7 @@ function AttendanceDashboard() {
             <span className="font-display fw-bold fs-5">Contribution</span>
             {(fromDate || toDate) && (
               <span className="ms-auto small" style={{ opacity: 0.85 }}>
-                {fromDate || "…"} → {toDate || "…"}
+                {fromDate ? displayDate(fromDate) : "…"} → {toDate ? displayDate(toDate) : "…"}
               </span>
             )}
           </div>
