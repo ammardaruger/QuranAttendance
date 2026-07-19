@@ -5,23 +5,81 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Quran Tehfeez — Class Attendance</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
-  body { background: #f2f4f7; }
-  .navy { color: #12233d; }
-  .bg-navy { background: #12233d; }
-  .btn-navy {
-    background: #12233d; color: #fff; font-weight: 600;
+  body { background: #f0f2f5; font-family: 'Inter', system-ui, sans-serif; }
+  .font-display { font-family: 'Baloo 2', 'Inter', sans-serif; }
+
+  /* Top navbar */
+  .topbar { background: #2a313c; }
+  .logo-mark {
+    width: 40px; height: 40px; border-radius: 8px;
+    background: #fff; color: #2a313c;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 1.25rem;
   }
-  .btn-navy:hover, .btn-navy:focus { background: #1d3557; color: #fff; }
-  .btn-outline-navy {
-    border: 1px solid #c9d1da; color: #3a4552; background: #fff; font-weight: 600;
+
+  /* Stat tiles */
+  .tile { border-radius: 14px; padding: 1.1rem 0.5rem; text-align: center; }
+  .tile .num { font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 1.7rem; line-height: 1.1; }
+  .tile .lbl { font-weight: 600; font-size: 0.85rem; }
+  .tile-green  { background: #aedcb6; } .tile-green  .num, .tile-green  .lbl { color: #1e6e34; }
+  .tile-blue   { background: #99cdf5; } .tile-blue   .num, .tile-blue   .lbl { color: #1266ad; }
+  .tile-orange { background: #f7a98c; } .tile-orange .num, .tile-orange .lbl { color: #c14515; }
+
+  /* Purple totals card */
+  .contribution {
+    background: linear-gradient(135deg, #8636d8 0%, #5f27a8 100%);
+    border-radius: 16px; color: #fff;
   }
-  .btn-outline-navy:hover { border-color: #12233d; color: #12233d; }
-  .nav-pills .nav-link { color: #3a4552; font-weight: 600; font-size: 0.875rem; }
-  .nav-pills .nav-link.active { background: #12233d; }
+  .contribution .inner {
+    background: rgba(255,255,255,0.14);
+    border-radius: 12px; text-align: center; padding: 0.9rem 0.25rem;
+  }
+  .contribution .inner .num { font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 1.5rem; line-height: 1.1; }
+  .contribution .inner .lbl { font-size: 0.8rem; opacity: 0.9; }
+
+  /* Section headings like "Attendance" */
+  .section-title {
+    font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 1.35rem; color: #7a30c9;
+  }
+
+  /* Cards */
+  .card { border: none; border-radius: 14px; box-shadow: 0 1px 4px rgba(20,30,50,0.08); }
+
+  /* Student / location group cards */
+  .group-header {
+    background: linear-gradient(180deg, #8a929e 0%, #737c89 100%);
+    color: #fff; border-radius: 14px 14px 0 0;
+    padding: 0.65rem 1rem;
+    display: flex; align-items: center; gap: 0.65rem;
+  }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    background: rgba(255,255,255,0.35); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 700;
+  }
+  .group-header .gname { font-weight: 600; }
+  .group-header .gsub { font-size: 0.78rem; opacity: 0.9; }
+
+  /* Buttons */
+  .btn-checkin {
+    background: linear-gradient(90deg, #1f7ae0, #2196f3);
+    color: #fff; font-weight: 700; border-radius: 10px;
+  }
+  .btn-checkin:hover, .btn-checkin:focus { color: #fff; filter: brightness(1.05); }
+  .btn-ghost {
+    border: 1px solid #d5dbe3; color: #1f7ae0; background: #fff; font-weight: 600; border-radius: 10px;
+  }
+  .btn-ghost:hover { border-color: #1f7ae0; color: #1f7ae0; }
+
+  .nav-pills .nav-link { color: #3a4552; font-weight: 600; font-size: 0.875rem; border-radius: 10px; }
+  .nav-pills .nav-link.active { background: #2a313c; }
+
   .table th {
     font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
     color: #5a6472; white-space: nowrap;
@@ -29,6 +87,7 @@
   .table td { vertical-align: middle; }
   @media (max-width: 576px) {
     .table td, .table th { font-size: 0.85rem; padding: 0.5rem; }
+    .tile .num { font-size: 1.4rem; }
   }
 </style>
 </head>
@@ -78,11 +137,13 @@ const STATUS_BADGE = {
   absent: "text-bg-danger",
   holiday: "text-bg-warning",
 };
-
 const STATUS_LABEL = { present: "Present", absent: "Absent", holiday: "Holiday" };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyForm = () => ({ name: "", status: "present", duration: "", date: today() });
+
+const initials = (name) =>
+  name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
 // POST body sent without a JSON content-type on purpose — Apps Script
 // web apps don't answer CORS preflight; a plain body avoids one.
@@ -103,13 +164,25 @@ function AttendanceDashboard() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  // Records shown in all views, restricted to the chosen date range.
-  // Dates are yyyy-mm-dd strings, so plain string comparison sorts correctly.
+  // Records shown everywhere below, restricted to the chosen date range.
   const filtered = records.filter((r) => {
     if (fromDate && r.date < fromDate) return false;
     if (toDate && r.date > toDate) return false;
     return true;
   });
+
+  // Top-line stats, driven by the filtered range
+  const stats = (() => {
+    const s = { present: 0, absent: 0, holiday: 0, minutes: 0 };
+    const students = new Set();
+    filtered.forEach((r) => {
+      if (s[r.status] !== undefined) s[r.status]++;
+      s.minutes += r.duration;
+      students.add(r.name);
+    });
+    s.students = students.size;
+    return s;
+  })();
 
   const loadRecords = async () => {
     setError("");
@@ -245,47 +318,38 @@ function AttendanceDashboard() {
     </div>
   );
 
-  const EmptyState = () => (
-    <div className="text-center text-secondary border border-dashed rounded-3 bg-white py-5 px-3"
-         style={{ borderStyle: "dashed" }}>
-      <div className="fw-semibold navy mb-1">No records yet</div>
-      <div className="small">Add a student's attendance above to get started.</div>
+  const RangeEmpty = () => (
+    <div className="card">
+      <div className="card-body text-center text-secondary py-5">
+        <div className="fw-semibold mb-1" style={{ color: "#2a313c" }}>
+          {records.length > 0 ? "No records in this date range" : "No records yet"}
+        </div>
+        <div className="small">
+          {records.length > 0
+            ? "Adjust the From/To dates or clear the filter."
+            : "Check in a student above to get started."}
+        </div>
+      </div>
     </div>
   );
 
   const GroupedView = ({ groupKey }) => {
     const groups = groupBy(groupKey);
-    if (groups.length === 0) {
-      if (records.length > 0) {
-        return (
-          <div className="text-center text-secondary bg-white border rounded-3 py-5 px-3">
-            <div className="fw-semibold navy mb-1">No records in this date range</div>
-            <div className="small">Adjust the From/To dates or clear the filter.</div>
-          </div>
-        );
-      }
-      return <EmptyState />;
-    }
+    if (groups.length === 0) return <RangeEmpty />;
     return (
       <div className="d-flex flex-column gap-3">
         {groups.map(([label, rows]) => {
           const s = summarize(rows);
           return (
-            <div className="card shadow-sm" key={label}>
-              <div className="card-header bg-light">
-                <div className="d-flex flex-wrap align-items-baseline gap-2">
-                  <span className="fw-bold navy">
-                    {label}
-                    {groupKey === "name" && (
-                      <span className="fw-normal text-secondary small ms-2">
-                        ({ROSTER[label] || rows[0].location})
-                      </span>
-                    )}
-                  </span>
-                  <span className="small text-secondary">
-                    {s.present} present · {s.absent} absent · {s.holiday} holiday ·{" "}
-                    <b className="navy">{s.minutes} min</b>
-                  </span>
+            <div className="card" key={label}>
+              <div className="group-header">
+                <div className="avatar">{initials(label)}</div>
+                <div className="flex-grow-1 min-w-0">
+                  <div className="gname text-truncate">{label}</div>
+                  <div className="gsub">
+                    {groupKey === "name" ? (ROSTER[label] || rows[0].location) + " · " : ""}
+                    {s.present} present · {s.absent} absent · {s.holiday} holiday · {s.minutes} min
+                  </div>
                 </div>
               </div>
               <div className="card-body p-0">
@@ -301,179 +365,224 @@ function AttendanceDashboard() {
   const selectedLocation = form.name ? ROSTER[form.name] : "";
 
   return (
-    <div className="container py-4" style={{ maxWidth: 960 }}>
-
-      {/* Header */}
-      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
-        <div>
-          <h1 className="h4 fw-bold navy mb-1">Quran Tehfeez — Class Attendance</h1>
-          <p className="text-secondary small mb-0">
-            Records saved to Google Sheets — shared across all devices.
-          </p>
+    <React.Fragment>
+      {/* Top navbar */}
+      <nav className="topbar py-2 mb-3 sticky-top">
+        <div className="container d-flex align-items-center justify-content-between" style={{ maxWidth: 960 }}>
+          <div className="d-flex align-items-center gap-2">
+            <div className="logo-mark">Q</div>
+            <span className="text-white font-display fw-bold fs-5">Quran Tehfeez</span>
+          </div>
+          <button className="btn btn-sm text-white-50 border-0" onClick={loadRecords} title="Refresh">
+            ↻ Refresh
+          </button>
         </div>
-        <button className="btn btn-sm btn-outline-navy" onClick={loadRecords}>
-          ↻ Refresh
-        </button>
-      </div>
+      </nav>
 
-      {/* Add record form */}
-      <div className="card shadow-sm mb-4">
-        <div className="card-body">
-          <div className="row g-3">
-            <div className="col-12 col-md-6 col-lg-4">
-              <label className="form-label small fw-semibold text-secondary mb-1">Student</label>
-              <select
-                className="form-select"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              >
-                <option value="">Select student…</option>
-                {STUDENT_NAMES.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+      <div className="container pb-5" style={{ maxWidth: 960 }}>
+
+        {/* Stat tiles */}
+        <div className="row g-2 g-md-3 mb-3">
+          <div className="col-4">
+            <div className="tile tile-green">
+              <div className="num">{stats.present}</div>
+              <div className="lbl">Present</div>
             </div>
-            <div className="col-6 col-md-6 col-lg-2">
-              <label className="form-label small fw-semibold text-secondary mb-1">Location</label>
-              <input className="form-control bg-light text-secondary" value={selectedLocation}
-                     placeholder="Auto" readOnly tabIndex={-1} />
+          </div>
+          <div className="col-4">
+            <div className="tile tile-blue">
+              <div className="num">{stats.holiday}</div>
+              <div className="lbl">Holiday</div>
             </div>
-            <div className="col-6 col-md-4 col-lg-2">
-              <label className="form-label small fw-semibold text-secondary mb-1">Class date</label>
-              <input
-                type="date"
-                className="form-control"
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-              />
+          </div>
+          <div className="col-4">
+            <div className="tile tile-orange">
+              <div className="num">{stats.absent}</div>
+              <div className="lbl">Absent</div>
             </div>
-            <div className="col-6 col-md-4 col-lg-2">
-              <label className="form-label small fw-semibold text-secondary mb-1">Attendance</label>
-              <select
-                className="form-select"
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-              >
-                <option value="present">Present</option>
-                <option value="absent">Absent</option>
-                <option value="holiday">Holiday</option>
-              </select>
+          </div>
+        </div>
+
+        {/* Contribution card */}
+        <div className="contribution p-3 mb-3">
+          <div className="d-flex align-items-center gap-2 mb-3">
+            <span style={{ fontSize: "1.3rem" }}>🏆</span>
+            <span className="font-display fw-bold fs-5">Contribution</span>
+            {(fromDate || toDate) && (
+              <span className="ms-auto small" style={{ opacity: 0.85 }}>
+                {fromDate || "…"} → {toDate || "…"}
+              </span>
+            )}
+          </div>
+          <div className="row g-2">
+            <div className="col-4"><div className="inner">
+              <div className="num">{stats.present}</div>
+              <div className="lbl">Classes</div>
+            </div></div>
+            <div className="col-4"><div className="inner">
+              <div className="num">{stats.minutes.toLocaleString()}</div>
+              <div className="lbl">Minutes</div>
+            </div></div>
+            <div className="col-4"><div className="inner">
+              <div className="num">{stats.students}</div>
+              <div className="lbl">Students</div>
+            </div></div>
+          </div>
+        </div>
+
+        {/* Attendance / check-in card */}
+        <div className="card mb-3">
+          <div className="card-body">
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <span style={{ fontSize: "1.2rem" }}>🧑‍🏫</span>
+              <span className="section-title">Attendance</span>
             </div>
-            <div className="col-6 col-md-4 col-lg-2">
-              <label className="form-label small fw-semibold text-secondary mb-1">Minutes</label>
-              <input
-                type="number"
-                min="1"
-                className={"form-control" + (form.status !== "present" ? " bg-light" : "")}
-                placeholder="e.g. 30"
-                disabled={form.status !== "present"}
-                value={form.status === "present" ? form.duration : ""}
-                onChange={(e) => setForm({ ...form, duration: e.target.value })}
-              />
+            <div className="row g-3">
+              <div className="col-12 col-md-6 col-lg-4">
+                <label className="form-label small fw-semibold text-secondary mb-1">Student</label>
+                <select
+                  className="form-select"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                >
+                  <option value="">Select student…</option>
+                  {STUDENT_NAMES.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-6 col-md-6 col-lg-2">
+                <label className="form-label small fw-semibold text-secondary mb-1">Location</label>
+                <input className="form-control bg-light text-secondary" value={selectedLocation}
+                       placeholder="Auto" readOnly tabIndex={-1} />
+              </div>
+              <div className="col-6 col-md-4 col-lg-2">
+                <label className="form-label small fw-semibold text-secondary mb-1">Class date</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+              </div>
+              <div className="col-6 col-md-4 col-lg-2">
+                <label className="form-label small fw-semibold text-secondary mb-1">Attendance</label>
+                <select
+                  className="form-select"
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  <option value="present">Present</option>
+                  <option value="absent">Absent</option>
+                  <option value="holiday">Holiday</option>
+                </select>
+              </div>
+              <div className="col-6 col-md-4 col-lg-2">
+                <label className="form-label small fw-semibold text-secondary mb-1">Minutes</label>
+                <input
+                  type="number"
+                  min="1"
+                  className={"form-control" + (form.status !== "present" ? " bg-light" : "")}
+                  placeholder="e.g. 30"
+                  disabled={form.status !== "present"}
+                  value={form.status === "present" ? form.duration : ""}
+                  onChange={(e) => setForm({ ...form, duration: e.target.value })}
+                />
+              </div>
+              <div className="col-12">
+                <button
+                  className="btn btn-checkin w-100"
+                  disabled={saving}
+                  onClick={addRecord}
+                >
+                  {saving ? "Saving…" : "→] Check In"}
+                </button>
+              </div>
             </div>
-            <div className="col-12">
+            {error && <div className="alert alert-danger py-2 small mt-3 mb-0">{error}</div>}
+          </div>
+        </div>
+
+        {/* Date range filter */}
+        <div className="card mb-3">
+          <div className="card-body py-2">
+            <div className="row g-2 align-items-end">
+              <div className="col-6 col-md-3">
+                <label className="form-label small fw-semibold text-secondary mb-1">From date</label>
+                <input
+                  type="date"
+                  className="form-control form-control-sm"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </div>
+              <div className="col-6 col-md-3">
+                <label className="form-label small fw-semibold text-secondary mb-1">To date</label>
+                <input
+                  type="date"
+                  className="form-control form-control-sm"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </div>
+              <div className="col-12 col-md-6 d-flex align-items-center gap-2 flex-wrap">
+                {(fromDate || toDate) ? (
+                  <React.Fragment>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => { setFromDate(""); setToDate(""); }}
+                    >Clear</button>
+                    <span className="small text-secondary">
+                      Showing <b style={{ color: "#2a313c" }}>{filtered.length}</b> of {records.length} records
+                    </span>
+                  </React.Fragment>
+                ) : (
+                  <span className="small text-secondary">Showing all {records.length} records</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* View tabs */}
+        <ul className="nav nav-pills flex-nowrap overflow-auto mb-3 gap-1">
+          {[
+            { id: "all", label: "All records" },
+            { id: "name", label: "By student" },
+            { id: "location", label: "By location" },
+          ].map((t) => (
+            <li className="nav-item" key={t.id}>
               <button
-                className="btn btn-navy w-100 w-md-auto"
-                disabled={saving}
-                onClick={addRecord}
-              >
-                {saving ? "Saving…" : "Add record"}
-              </button>
-            </div>
+                className={"nav-link text-nowrap" + (view === t.id ? " active" : "")}
+                onClick={() => setView(t.id)}
+              >{t.label}</button>
+            </li>
+          ))}
+        </ul>
+
+        {/* Content */}
+        {loading ? (
+          <div className="text-center text-secondary py-5">
+            <div className="spinner-border spinner-border-sm me-2" role="status"></div>
+            Loading records from Google Sheets…
           </div>
-          {error && <div className="alert alert-danger py-2 small mt-3 mb-0">{error}</div>}
-        </div>
-      </div>
-
-      {/* Date range filter */}
-      <div className="card shadow-sm mb-3">
-        <div className="card-body py-2">
-          <div className="row g-2 align-items-end">
-            <div className="col-6 col-md-3">
-              <label className="form-label small fw-semibold text-secondary mb-1">From date</label>
-              <input
-                type="date"
-                className="form-control form-control-sm"
-                value={fromDate}
-                max={toDate || undefined}
-                onChange={(e) => setFromDate(e.target.value)}
-              />
-            </div>
-            <div className="col-6 col-md-3">
-              <label className="form-label small fw-semibold text-secondary mb-1">To date</label>
-              <input
-                type="date"
-                className="form-control form-control-sm"
-                value={toDate}
-                min={fromDate || undefined}
-                onChange={(e) => setToDate(e.target.value)}
-              />
-            </div>
-            <div className="col-12 col-md-6 d-flex align-items-center gap-2 flex-wrap">
-              {(fromDate || toDate) ? (
-                <React.Fragment>
-                  <button
-                    className="btn btn-sm btn-outline-navy"
-                    onClick={() => { setFromDate(""); setToDate(""); }}
-                  >Clear</button>
-                  <span className="small text-secondary">
-                    Showing <b className="navy">{filtered.length}</b> of {records.length} records
-                    {fromDate && toDate ? ` (${fromDate} → ${toDate})`
-                      : fromDate ? ` (from ${fromDate})`
-                      : ` (up to ${toDate})`}
-                  </span>
-                </React.Fragment>
-              ) : (
-                <span className="small text-secondary">Showing all {records.length} records</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* View tabs */}
-      <ul className="nav nav-pills flex-nowrap overflow-auto mb-3 gap-1">
-        {[
-          { id: "all", label: "All records" },
-          { id: "name", label: "By student" },
-          { id: "location", label: "By location" },
-        ].map((t) => (
-          <li className="nav-item" key={t.id}>
-            <button
-              className={"nav-link text-nowrap" + (view === t.id ? " active" : "")}
-              onClick={() => setView(t.id)}
-            >{t.label}</button>
-          </li>
-        ))}
-      </ul>
-
-      {/* Content */}
-      {loading ? (
-        <div className="text-center text-secondary py-5">
-          <div className="spinner-border spinner-border-sm me-2" role="status"></div>
-          Loading records from Google Sheets…
-        </div>
-      ) : view === "all" ? (
-        filtered.length === 0 ? (
-          records.length > 0 ? (
-            <div className="text-center text-secondary bg-white border rounded-3 py-5 px-3">
-              <div className="fw-semibold navy mb-1">No records in this date range</div>
-              <div className="small">Adjust the From/To dates or clear the filter.</div>
-            </div>
+        ) : view === "all" ? (
+          filtered.length === 0 ? (
+            <RangeEmpty />
           ) : (
-            <EmptyState />
+            <div className="card">
+              <div className="card-body p-0">
+                <RecordTable rows={filtered} />
+              </div>
+            </div>
           )
         ) : (
-          <div className="card shadow-sm">
-            <div className="card-body p-0">
-              <RecordTable rows={filtered} />
-            </div>
-          </div>
-        )
-      ) : (
-        <GroupedView groupKey={view} />
-      )}
-    </div>
+          <GroupedView groupKey={view} />
+        )}
+      </div>
+    </React.Fragment>
   );
 }
 
