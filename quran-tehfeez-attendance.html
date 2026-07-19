@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quran Tehfeez — Class Attendance</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  body { margin: 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const STORAGE_KEY = "attendance-records";
+
+// ── Hardcoded roster (from Quran_Tehfeez.xlsx → Idara sheet) ──────────
+const ROSTER = {
+  "Jeddah Students": "Jeddah",
+  "Ammar Husnain Bharmal": "Jeddah",
+  "Zahra Abbas Lokhandwala": "Jeddah",
+  "Jamila Tayyeb Saifee": "Jeddah",
+  "Sakina Abbas Lokhandwala": "Jeddah",
+  "Arefa Husnain Bharmal": "Jeddah",
+  "Salman M Shabbir Mutawwif": "Jeddah",
+  "Insiyah Shk Huzaifa Rangwala": "Jeddah",
+  "Zoab Abdeali Bhagat": "Jeddah",
+  "Nairobi Students": "Nairobi",
+  "Batool Jamaly": "Nairobi",
+  "M Burhanuddin Ahmedabadwala": "Nairobi",
+  "Zahra Shk Huzaifa Ahmedabadwala": "Nairobi",
+  "Farida Hatim Alyamani": "Nairobi",
+  "Shk Juzer Morogo": "Nairobi",
+  "MSB Students": "Daresalam",
+  "Yusuf Moti": "Yaqut",
+  "Zahra Qasim Multan": "Yaqut",
+  "Yaqut Students": "Yaqut",
+  "Dubai Students": "Dubai",
+  "Sakina Khumusi": "Dubai",
+  "Ruqaiyah Halai": "Dubai",
+  "Adnan Halai": "Dubai",
+  "Mariyam Bai": "Dubai",
+  "Arwa Bai": "Dubai",
+};
+
+const STUDENT_NAMES = Object.keys(ROSTER).sort((a, b) => a.localeCompare(b));
+
+const STATUS = {
+  present: { label: "Present", color: "#1E7F4F", bg: "#E6F4EC" },
+  absent: { label: "Absent", color: "#B3402A", bg: "#FBEAE6" },
+  holiday: { label: "Holiday", color: "#8A6D1F", bg: "#FAF3DC" },
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const emptyForm = () => ({ name: "", status: "present", duration: "", date: today() });
+
+function AttendanceDashboard() {
+  const [records, setRecords] = useState([]);
+  const [form, setForm] = useState(emptyForm());
+  const [view, setView] = useState("all"); // all | name | location
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setRecords(JSON.parse(saved));
+    } catch (e) {}
+  }, []);
+
+  const persist = (next) => {
+    setRecords(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch (e) {
+      setError("Could not save. Your changes may not persist.");
+    }
+  };
+
+  const addRecord = () => {
+    setError("");
+    const name = form.name;
+    const duration = form.status === "present" ? Number(form.duration) : 0;
+
+    if (!name) return setError("Select a student.");
+    if (!form.date) return setError("Select the class date.");
+    if (form.status === "present" && (!form.duration || duration <= 0))
+      return setError("Enter the class duration in minutes.");
+
+    const rec = {
+      id: Date.now(),
+      name,
+      location: ROSTER[name],
+      status: form.status,
+      duration,
+      date: form.date,
+    };
+    persist([rec, ...records]);
+    setForm(emptyForm());
+  };
+
+  const deleteRecord = (id) => {
+    persist(records.filter((r) => r.id !== id));
+  };
+
+  const groupBy = (key) => {
+    const groups = {};
+    for (const r of records) {
+      const k = r[key];
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(r);
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+  };
+
+  const summarize = (rows) => {
+    const s = { present: 0, absent: 0, holiday: 0, minutes: 0 };
+    rows.forEach((r) => {
+      s[r.status]++;
+      s.minutes += r.duration;
+    });
+    return s;
+  };
+
+  const th = {
+    textAlign: "left",
+    padding: "10px 12px",
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#5A6472",
+    borderBottom: "2px solid #E3E7EC",
+  };
+  const td = {
+    padding: "10px 12px",
+    fontSize: 14,
+    color: "#1B2430",
+    borderBottom: "1px solid #EEF1F4",
+  };
+
+  const StatusPill = ({ status }) => {
+    const s = STATUS[status];
+    return (
+      <span style={{
+        display: "inline-block",
+        padding: "3px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 600,
+        color: s.color,
+        background: s.bg,
+      }}>
+        {s.label}
+      </span>
+    );
+  };
+
+  const RecordTable = ({ rows }) => (
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr>
+          {view !== "name" && <th style={th}>Student</th>}
+          {view !== "location" && <th style={th}>Location</th>}
+          <th style={th}>Class Date</th>
+          <th style={th}>Attendance</th>
+          <th style={{ ...th, textAlign: "right" }}>Minutes</th>
+          <th style={{ ...th, width: 40 }}></th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.id}>
+            {view !== "name" && <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>}
+            {view !== "location" && <td style={td}>{r.location}</td>}
+            <td style={{ ...td, color: "#5A6472" }}>{r.date}</td>
+            <td style={td}><StatusPill status={r.status} /></td>
+            <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+              {r.status === "present" ? r.duration : "—"}
+            </td>
+            <td style={{ ...td, textAlign: "center" }}>
+              <button
+                onClick={() => deleteRecord(r.id)}
+                title="Delete record"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#9AA3AE",
+                  cursor: "pointer",
+                  fontSize: 14,
+                }}
+              >✕</button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  const EmptyState = () => (
+    <div style={{
+      padding: "48px 20px",
+      textAlign: "center",
+      color: "#5A6472",
+      border: "1px dashed #C9D1DA",
+      borderRadius: 10,
+      background: "#FAFBFC",
+    }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#12233D", marginBottom: 6 }}>
+        No records yet
+      </div>
+      <div style={{ fontSize: 14 }}>Add a student's attendance above to get started.</div>
+    </div>
+  );
+
+  const GroupedView = ({ groupKey }) => {
+    const groups = groupBy(groupKey);
+    if (groups.length === 0) return <EmptyState />;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        {groups.map(([label, rows]) => {
+          const s = summarize(rows);
+          return (
+            <div key={label} style={{
+              border: "1px solid #E3E7EC",
+              borderRadius: 10,
+              overflow: "hidden",
+              background: "#fff",
+            }}>
+              <div style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "baseline",
+                gap: 12,
+                padding: "12px 16px",
+                background: "#F6F8FA",
+                borderBottom: "1px solid #E3E7EC",
+              }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#12233D" }}>
+                  {label}
+                  {groupKey === "name" && (
+                    <span style={{ fontWeight: 400, fontSize: 13, color: "#5A6472", marginLeft: 8 }}>
+                      ({ROSTER[label] || rows[0].location})
+                    </span>
+                  )}
+                </span>
+                <span style={{ fontSize: 13, color: "#5A6472" }}>
+                  {s.present} present · {s.absent} absent · {s.holiday} holiday ·{" "}
+                  <b style={{ color: "#12233D" }}>{s.minutes} min total</b>
+                </span>
+              </div>
+              <RecordTable rows={rows} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const input = {
+    padding: "9px 12px",
+    fontSize: 14,
+    border: "1px solid #C9D1DA",
+    borderRadius: 8,
+    outline: "none",
+    background: "#fff",
+    color: "#1B2430",
+    minWidth: 0,
+    fontFamily: "inherit",
+  };
+
+  const label = {
+    display: "block",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#5A6472",
+    marginBottom: 4,
+  };
+
+  const tabs = [
+    { id: "all", label: "All records" },
+    { id: "name", label: "Group by student" },
+    { id: "location", label: "Group by location" },
+  ];
+
+  const selectedLocation = form.name ? ROSTER[form.name] : "";
+
+  return (
+    <div style={{
+      fontFamily: "'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif",
+      background: "#F2F4F7",
+      minHeight: "100vh",
+      padding: "28px 20px",
+      boxSizing: "border-box",
+    }}>
+      <div style={{ maxWidth: 940, margin: "0 auto" }}>
+        <header style={{ marginBottom: 24 }}>
+          <h1 style={{
+            margin: 0,
+            fontSize: 26,
+            fontWeight: 800,
+            color: "#12233D",
+            letterSpacing: "-0.01em",
+          }}>Quran Tehfeez — Class Attendance</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 14, color: "#5A6472" }}>
+            Track who joined online class, from where, and for how long.
+          </p>
+        </header>
+
+        <section style={{
+          background: "#fff",
+          border: "1px solid #E3E7EC",
+          borderRadius: 10,
+          padding: 16,
+          marginBottom: 24,
+        }}>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "1.6fr 0.9fr 1fr 0.9fr 0.7fr auto",
+            gap: 10,
+            alignItems: "end",
+          }}>
+            <div>
+              <label style={label}>Student</label>
+              <select
+                style={{ ...input, width: "100%", boxSizing: "border-box" }}
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              >
+                <option value="">Select student…</option>
+                {STUDENT_NAMES.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={label}>Location</label>
+              <input
+                style={{ ...input, width: "100%", boxSizing: "border-box", background: "#F2F4F7", color: "#5A6472" }}
+                value={selectedLocation}
+                placeholder="Auto"
+                readOnly
+                tabIndex={-1}
+              />
+            </div>
+            <div>
+              <label style={label}>Class date</label>
+              <input
+                style={{ ...input, width: "100%", boxSizing: "border-box" }}
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+              />
+            </div>
+            <div>
+              <label style={label}>Attendance</label>
+              <select
+                style={{ ...input, width: "100%", boxSizing: "border-box" }}
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+              >
+                <option value="present">Present</option>
+                <option value="absent">Absent</option>
+                <option value="holiday">Holiday</option>
+              </select>
+            </div>
+            <div>
+              <label style={label}>Minutes</label>
+              <input
+                style={{
+                  ...input, width: "100%", boxSizing: "border-box",
+                  background: form.status === "present" ? "#fff" : "#F2F4F7",
+                }}
+                placeholder="e.g. 30"
+                type="number"
+                min="1"
+                disabled={form.status !== "present"}
+                value={form.status === "present" ? form.duration : ""}
+                onChange={(e) => setForm({ ...form, duration: e.target.value })}
+              />
+            </div>
+            <button
+              onClick={addRecord}
+              style={{
+                padding: "9px 18px",
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#fff",
+                background: "#12233D",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                height: 38,
+              }}
+            >Add</button>
+          </div>
+          {error && (
+            <div style={{ marginTop: 10, fontSize: 13, color: "#B3402A" }}>{error}</div>
+          )}
+        </section>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setView(t.id)}
+              style={{
+                padding: "7px 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 999,
+                cursor: "pointer",
+                border: view === t.id ? "1px solid #12233D" : "1px solid #C9D1DA",
+                background: view === t.id ? "#12233D" : "#fff",
+                color: view === t.id ? "#fff" : "#3A4552",
+              }}
+            >{t.label}</button>
+          ))}
+        </div>
+
+        {view === "all" ? (
+          records.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div style={{
+              background: "#fff",
+              border: "1px solid #E3E7EC",
+              borderRadius: 10,
+              overflow: "hidden",
+            }}>
+              <RecordTable rows={records} />
+            </div>
+          )
+        ) : (
+          <GroupedView groupKey={view} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<AttendanceDashboard />);
+</script>
+</body>
+</html>
