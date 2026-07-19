@@ -9,6 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   body { background: #f0f2f5; font-family: 'Inter', system-ui, sans-serif; }
   .font-display { font-family: 'Baloo 2', 'Inter', sans-serif; }
@@ -91,6 +93,14 @@
     font-size: 0.65rem; font-weight: 700;
   }
 
+  /* Reports button (per group card) */
+  .btn-report {
+    background: #fff; color: #5b5bd6; border: 1px solid #cfd4f5;
+    font-weight: 600; font-size: 0.78rem; border-radius: 8px;
+    padding: 0.2rem 0.7rem; flex-shrink: 0;
+  }
+  .btn-report:hover { background: #f2f3fd; color: #4646c6; border-color: #5b5bd6; }
+
   /* Buttons */
   .btn-checkin {
     background: linear-gradient(90deg, #1f7ae0, #2196f3);
@@ -169,6 +179,94 @@ const emptyForm = () => ({ name: "", status: "present", duration: "", date: toda
 
 const initials = (name) =>
   name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+// Generate a PDF report for one student or one location.
+// kind: "student" | "location"; rows: that subject's (date-filtered) records
+function generatePdf(kind, label, rows, range) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+
+  // Header band
+  doc.setFillColor(42, 49, 60); // #2a313c
+  doc.rect(0, 0, pageW, 26, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont("helvetica", "bold");
+  doc.text("Quran Tehfeez — Attendance Report", 14, 12);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.text(
+    (kind === "student" ? "Student: " : "Location: ") + label,
+    14, 20
+  );
+
+  // Meta lines
+  doc.setTextColor(60, 68, 80);
+  doc.setFontSize(9);
+  let y = 34;
+  const rangeText = range.from && range.to ? `${range.from} to ${range.to}`
+    : range.from ? `from ${range.from}`
+    : range.to ? `up to ${range.to}`
+    : "All dates";
+  doc.text(`Period: ${rangeText}`, 14, y);
+  doc.text(`Generated: ${new Date().toISOString().slice(0, 10)}`, pageW - 14, y, { align: "right" });
+
+  // Summary
+  const s = { present: 0, absent: 0, holiday: 0, minutes: 0 };
+  rows.forEach((r) => {
+    if (s[r.status] !== undefined) s[r.status]++;
+    s.minutes += r.duration;
+  });
+  y += 8;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(42, 49, 60);
+  doc.text("Summary", 14, y);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  y += 6;
+  doc.text(
+    `Present: ${s.present}    Absent: ${s.absent}    Holiday: ${s.holiday}    ` +
+    `Total: ${s.minutes} min (${(s.minutes / 60).toFixed(1)} hrs)`,
+    14, y
+  );
+
+  // Records table (oldest first reads naturally in a report)
+  const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+  const head = kind === "student"
+    ? [["Date", "Location", "Attendance", "Minutes"]]
+    : [["Date", "Student", "Attendance", "Minutes"]];
+  const body = sorted.map((r) => (
+    kind === "student"
+      ? [r.date, r.location, (STATUS_LABEL[r.status] || r.status), r.status === "present" ? String(r.duration) : "-"]
+      : [r.date, r.name, (STATUS_LABEL[r.status] || r.status), r.status === "present" ? String(r.duration) : "-"]
+  ));
+
+  doc.autoTable({
+    startY: y + 6,
+    head, body,
+    styles: { fontSize: 9, cellPadding: 2.5 },
+    headStyles: { fillColor: [42, 49, 60], textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [244, 246, 249] },
+    columnStyles: { 3: { halign: "right" } },
+    margin: { left: 14, right: 14 },
+    didDrawPage: (data) => {
+      // Footer with page number
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(
+        `Page ${doc.internal.getNumberOfPages()}`,
+        pageW - 14,
+        doc.internal.pageSize.getHeight() - 8,
+        { align: "right" }
+      );
+    },
+  });
+
+  const safe = label.replace(/[^a-z0-9]+/gi, "_");
+  doc.save(`${safe}_attendance_report.pdf`);
+}
 
 // POST body sent without a JSON content-type on purpose — Apps Script
 // web apps don't answer CORS preflight; a plain body avoids one.
@@ -438,6 +536,14 @@ function AttendanceDashboard() {
                 <span className="badge rounded-pill text-bg-light me-1">
                   {rows.length} {rows.length === 1 ? "record" : "records"}
                 </span>
+                <button
+                  className="btn btn-sm btn-report"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    generatePdf(groupKey === "name" ? "student" : "location", label, rows, { from: fromDate, to: toDate });
+                  }}
+                  title="Download PDF report"
+                >Reports</button>
                 <span className={"chevron" + (open ? " open" : "")}>▾</span>
               </div>
               {open && (
