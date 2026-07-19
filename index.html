@@ -17,9 +17,11 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-const STORAGE_KEY = "attendance-records";
+// ── PASTE YOUR APPS SCRIPT WEB APP URL HERE (ends in /exec) ──────────
+const API_URL = "https://script.google.com/macros/s/AKfycby2WTjMlnHXWBHhs7cP6_HQnytGBGTgfFtZWFwBt7aFKZcpI2xvcmUR2x3bZZaZe3Iy/exec";
+// ─────────────────────────────────────────────────────────────────────
 
-// ── Hardcoded roster (from Quran_Tehfeez.xlsx → Idara sheet) ──────────
+// ── Hardcoded roster (from Quran_Tehfeez.xlsx → Idara sheet) ─────────
 const ROSTER = {
   "Jeddah Students": "Jeddah",
   "Ammar Husnain Bharmal": "Jeddah",
@@ -57,32 +59,52 @@ const STATUS = {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
-
 const emptyForm = () => ({ name: "", status: "present", duration: "", date: today() });
+
+// NOTE: POST body is sent without a JSON content-type header on purpose —
+// Apps Script web apps don't answer CORS preflight requests, and a plain
+// text body avoids triggering one.
+async function api(method, body) {
+  const opts = { method };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_URL, opts);
+  return res.json();
+}
 
 function AttendanceDashboard() {
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState(emptyForm());
   const [view, setView] = useState("all"); // all | name | location
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const loadRecords = async () => {
+    setError("");
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setRecords(JSON.parse(saved));
-    } catch (e) {}
-  }, []);
-
-  const persist = (next) => {
-    setRecords(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      const data = await api("GET");
+      if (data.ok) {
+        // newest first
+        setRecords(data.records.sort((a, b) => Number(b.id) - Number(a.id)));
+      } else {
+        setError("Could not load records: " + (data.error || "unknown error"));
+      }
     } catch (e) {
-      setError("Could not save. Your changes may not persist.");
+      setError("Could not reach Google Sheets. Check your internet connection and the API_URL in this file.");
     }
+    setLoading(false);
   };
 
-  const addRecord = () => {
+  useEffect(() => {
+    if (API_URL.startsWith("PASTE_")) {
+      setError("Setup needed: paste your Apps Script URL into API_URL at the top of this file.");
+      setLoading(false);
+      return;
+    }
+    loadRecords();
+  }, []);
+
+  const addRecord = async () => {
     setError("");
     const name = form.name;
     const duration = form.status === "present" ? Number(form.duration) : 0;
@@ -93,19 +115,45 @@ function AttendanceDashboard() {
       return setError("Enter the class duration in minutes.");
 
     const rec = {
-      id: Date.now(),
+      id: String(Date.now()),
       name,
       location: ROSTER[name],
       status: form.status,
       duration,
       date: form.date,
     };
-    persist([rec, ...records]);
+
+    setSaving(true);
+    // show it immediately, then confirm with the sheet
+    setRecords([rec, ...records]);
     setForm(emptyForm());
+    try {
+      const res = await api("POST", { action: "add", record: rec });
+      if (!res.ok) {
+        setError("Save failed: " + (res.error || "unknown error"));
+        setRecords((cur) => cur.filter((r) => r.id !== rec.id));
+      }
+    } catch (e) {
+      setError("Save failed — could not reach Google Sheets.");
+      setRecords((cur) => cur.filter((r) => r.id !== rec.id));
+    }
+    setSaving(false);
   };
 
-  const deleteRecord = (id) => {
-    persist(records.filter((r) => r.id !== id));
+  const deleteRecord = async (id) => {
+    setError("");
+    const backup = records;
+    setRecords(records.filter((r) => r.id !== id));
+    try {
+      const res = await api("POST", { action: "delete", id });
+      if (!res.ok) {
+        setError("Delete failed: " + (res.error || "unknown error"));
+        setRecords(backup);
+      }
+    } catch (e) {
+      setError("Delete failed — could not reach Google Sheets.");
+      setRecords(backup);
+    }
   };
 
   const groupBy = (key) => {
@@ -121,7 +169,7 @@ function AttendanceDashboard() {
   const summarize = (rows) => {
     const s = { present: 0, absent: 0, holiday: 0, minutes: 0 };
     rows.forEach((r) => {
-      s[r.status]++;
+      if (s[r.status] !== undefined) s[r.status]++;
       s.minutes += r.duration;
     });
     return s;
@@ -145,7 +193,7 @@ function AttendanceDashboard() {
   };
 
   const StatusPill = ({ status }) => {
-    const s = STATUS[status];
+    const s = STATUS[status] || { label: status, color: "#5A6472", bg: "#EEF1F4" };
     return (
       <span style={{
         display: "inline-block",
@@ -299,17 +347,39 @@ function AttendanceDashboard() {
       boxSizing: "border-box",
     }}>
       <div style={{ maxWidth: 940, margin: "0 auto" }}>
-        <header style={{ marginBottom: 24 }}>
-          <h1 style={{
-            margin: 0,
-            fontSize: 26,
-            fontWeight: 800,
-            color: "#12233D",
-            letterSpacing: "-0.01em",
-          }}>Quran Tehfeez — Class Attendance</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 14, color: "#5A6472" }}>
-            Track who joined online class, from where, and for how long.
-          </p>
+        <header style={{
+          marginBottom: 24,
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 10,
+        }}>
+          <div>
+            <h1 style={{
+              margin: 0,
+              fontSize: 26,
+              fontWeight: 800,
+              color: "#12233D",
+              letterSpacing: "-0.01em",
+            }}>Quran Tehfeez — Class Attendance</h1>
+            <p style={{ margin: "4px 0 0", fontSize: 14, color: "#5A6472" }}>
+              Records saved to Google Sheets — shared across all devices.
+            </p>
+          </div>
+          <button
+            onClick={loadRecords}
+            style={{
+              padding: "7px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              borderRadius: 8,
+              cursor: "pointer",
+              border: "1px solid #C9D1DA",
+              background: "#fff",
+              color: "#3A4552",
+            }}
+          >↻ Refresh</button>
         </header>
 
         <section style={{
@@ -386,18 +456,19 @@ function AttendanceDashboard() {
             </div>
             <button
               onClick={addRecord}
+              disabled={saving}
               style={{
                 padding: "9px 18px",
                 fontSize: 14,
                 fontWeight: 700,
                 color: "#fff",
-                background: "#12233D",
+                background: saving ? "#5A6472" : "#12233D",
                 border: "none",
                 borderRadius: 8,
-                cursor: "pointer",
+                cursor: saving ? "wait" : "pointer",
                 height: 38,
               }}
-            >Add</button>
+            >{saving ? "Saving…" : "Add"}</button>
           </div>
           {error && (
             <div style={{ marginTop: 10, fontSize: 13, color: "#B3402A" }}>{error}</div>
@@ -423,7 +494,11 @@ function AttendanceDashboard() {
           ))}
         </div>
 
-        {view === "all" ? (
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "#5A6472" }}>
+            Loading records from Google Sheets…
+          </div>
+        ) : view === "all" ? (
           records.length === 0 ? (
             <EmptyState />
           ) : (
