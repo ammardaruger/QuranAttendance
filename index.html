@@ -4,11 +4,32 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Quran Tehfeez — Class Attendance</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
-  body { margin: 0; }
+  body { background: #f2f4f7; }
+  .navy { color: #12233d; }
+  .bg-navy { background: #12233d; }
+  .btn-navy {
+    background: #12233d; color: #fff; font-weight: 600;
+  }
+  .btn-navy:hover, .btn-navy:focus { background: #1d3557; color: #fff; }
+  .btn-outline-navy {
+    border: 1px solid #c9d1da; color: #3a4552; background: #fff; font-weight: 600;
+  }
+  .btn-outline-navy:hover { border-color: #12233d; color: #12233d; }
+  .nav-pills .nav-link { color: #3a4552; font-weight: 600; font-size: 0.875rem; }
+  .nav-pills .nav-link.active { background: #12233d; }
+  .table th {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #5a6472; white-space: nowrap;
+  }
+  .table td { vertical-align: middle; }
+  @media (max-width: 576px) {
+    .table td, .table th { font-size: 0.85rem; padding: 0.5rem; }
+  }
 </style>
 </head>
 <body>
@@ -52,18 +73,19 @@ const ROSTER = {
 
 const STUDENT_NAMES = Object.keys(ROSTER).sort((a, b) => a.localeCompare(b));
 
-const STATUS = {
-  present: { label: "Present", color: "#1E7F4F", bg: "#E6F4EC" },
-  absent: { label: "Absent", color: "#B3402A", bg: "#FBEAE6" },
-  holiday: { label: "Holiday", color: "#8A6D1F", bg: "#FAF3DC" },
+const STATUS_BADGE = {
+  present: "text-bg-success",
+  absent: "text-bg-danger",
+  holiday: "text-bg-warning",
 };
+
+const STATUS_LABEL = { present: "Present", absent: "Absent", holiday: "Holiday" };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyForm = () => ({ name: "", status: "present", duration: "", date: today() });
 
-// NOTE: POST body is sent without a JSON content-type header on purpose —
-// Apps Script web apps don't answer CORS preflight requests, and a plain
-// text body avoids triggering one.
+// POST body sent without a JSON content-type on purpose — Apps Script
+// web apps don't answer CORS preflight; a plain body avoids one.
 async function api(method, body) {
   const opts = { method };
   if (body) opts.body = JSON.stringify(body);
@@ -78,13 +100,23 @@ function AttendanceDashboard() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  // Records shown in all views, restricted to the chosen date range.
+  // Dates are yyyy-mm-dd strings, so plain string comparison sorts correctly.
+  const filtered = records.filter((r) => {
+    if (fromDate && r.date < fromDate) return false;
+    if (toDate && r.date > toDate) return false;
+    return true;
+  });
 
   const loadRecords = async () => {
     setError("");
+    setLoading(true);
     try {
       const data = await api("GET");
       if (data.ok) {
-        // newest first
         setRecords(data.records.sort((a, b) => Number(b.id) - Number(a.id)));
       } else {
         setError("Could not load records: " + (data.error || "unknown error"));
@@ -124,7 +156,6 @@ function AttendanceDashboard() {
     };
 
     setSaving(true);
-    // show it immediately, then confirm with the sheet
     setRecords([rec, ...records]);
     setForm(emptyForm());
     try {
@@ -158,7 +189,7 @@ function AttendanceDashboard() {
 
   const groupBy = (key) => {
     const groups = {};
-    for (const r of records) {
+    for (const r of filtered) {
       const k = r[key];
       if (!groups[k]) groups[k] = [];
       groups[k].push(r);
@@ -175,134 +206,91 @@ function AttendanceDashboard() {
     return s;
   };
 
-  const th = {
-    textAlign: "left",
-    padding: "10px 12px",
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "#5A6472",
-    borderBottom: "2px solid #E3E7EC",
-  };
-  const td = {
-    padding: "10px 12px",
-    fontSize: 14,
-    color: "#1B2430",
-    borderBottom: "1px solid #EEF1F4",
-  };
-
-  const StatusPill = ({ status }) => {
-    const s = STATUS[status] || { label: status, color: "#5A6472", bg: "#EEF1F4" };
-    return (
-      <span style={{
-        display: "inline-block",
-        padding: "3px 10px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 600,
-        color: s.color,
-        background: s.bg,
-      }}>
-        {s.label}
-      </span>
-    );
-  };
-
   const RecordTable = ({ rows }) => (
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead>
-        <tr>
-          {view !== "name" && <th style={th}>Student</th>}
-          {view !== "location" && <th style={th}>Location</th>}
-          <th style={th}>Class Date</th>
-          <th style={th}>Attendance</th>
-          <th style={{ ...th, textAlign: "right" }}>Minutes</th>
-          <th style={{ ...th, width: 40 }}></th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.id}>
-            {view !== "name" && <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>}
-            {view !== "location" && <td style={td}>{r.location}</td>}
-            <td style={{ ...td, color: "#5A6472" }}>{r.date}</td>
-            <td style={td}><StatusPill status={r.status} /></td>
-            <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-              {r.status === "present" ? r.duration : "—"}
-            </td>
-            <td style={{ ...td, textAlign: "center" }}>
-              <button
-                onClick={() => deleteRecord(r.id)}
-                title="Delete record"
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#9AA3AE",
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >✕</button>
-            </td>
+    <div className="table-responsive">
+      <table className="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            {view !== "name" && <th>Student</th>}
+            {view !== "location" && <th>Location</th>}
+            <th>Date</th>
+            <th>Attendance</th>
+            <th className="text-end">Mins</th>
+            <th style={{ width: 40 }}></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              {view !== "name" && <td className="fw-semibold">{r.name}</td>}
+              {view !== "location" && <td>{r.location}</td>}
+              <td className="text-secondary text-nowrap">{r.date}</td>
+              <td>
+                <span className={"badge rounded-pill " + (STATUS_BADGE[r.status] || "text-bg-secondary")}>
+                  {STATUS_LABEL[r.status] || r.status}
+                </span>
+              </td>
+              <td className="text-end">{r.status === "present" ? r.duration : "—"}</td>
+              <td className="text-center">
+                <button
+                  className="btn btn-sm btn-link text-secondary p-0"
+                  title="Delete record"
+                  onClick={() => deleteRecord(r.id)}
+                >✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 
   const EmptyState = () => (
-    <div style={{
-      padding: "48px 20px",
-      textAlign: "center",
-      color: "#5A6472",
-      border: "1px dashed #C9D1DA",
-      borderRadius: 10,
-      background: "#FAFBFC",
-    }}>
-      <div style={{ fontSize: 15, fontWeight: 600, color: "#12233D", marginBottom: 6 }}>
-        No records yet
-      </div>
-      <div style={{ fontSize: 14 }}>Add a student's attendance above to get started.</div>
+    <div className="text-center text-secondary border border-dashed rounded-3 bg-white py-5 px-3"
+         style={{ borderStyle: "dashed" }}>
+      <div className="fw-semibold navy mb-1">No records yet</div>
+      <div className="small">Add a student's attendance above to get started.</div>
     </div>
   );
 
   const GroupedView = ({ groupKey }) => {
     const groups = groupBy(groupKey);
-    if (groups.length === 0) return <EmptyState />;
+    if (groups.length === 0) {
+      if (records.length > 0) {
+        return (
+          <div className="text-center text-secondary bg-white border rounded-3 py-5 px-3">
+            <div className="fw-semibold navy mb-1">No records in this date range</div>
+            <div className="small">Adjust the From/To dates or clear the filter.</div>
+          </div>
+        );
+      }
+      return <EmptyState />;
+    }
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="d-flex flex-column gap-3">
         {groups.map(([label, rows]) => {
           const s = summarize(rows);
           return (
-            <div key={label} style={{
-              border: "1px solid #E3E7EC",
-              borderRadius: 10,
-              overflow: "hidden",
-              background: "#fff",
-            }}>
-              <div style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "baseline",
-                gap: 12,
-                padding: "12px 16px",
-                background: "#F6F8FA",
-                borderBottom: "1px solid #E3E7EC",
-              }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#12233D" }}>
-                  {label}
-                  {groupKey === "name" && (
-                    <span style={{ fontWeight: 400, fontSize: 13, color: "#5A6472", marginLeft: 8 }}>
-                      ({ROSTER[label] || rows[0].location})
-                    </span>
-                  )}
-                </span>
-                <span style={{ fontSize: 13, color: "#5A6472" }}>
-                  {s.present} present · {s.absent} absent · {s.holiday} holiday ·{" "}
-                  <b style={{ color: "#12233D" }}>{s.minutes} min total</b>
-                </span>
+            <div className="card shadow-sm" key={label}>
+              <div className="card-header bg-light">
+                <div className="d-flex flex-wrap align-items-baseline gap-2">
+                  <span className="fw-bold navy">
+                    {label}
+                    {groupKey === "name" && (
+                      <span className="fw-normal text-secondary small ms-2">
+                        ({ROSTER[label] || rows[0].location})
+                      </span>
+                    )}
+                  </span>
+                  <span className="small text-secondary">
+                    {s.present} present · {s.absent} absent · {s.holiday} holiday ·{" "}
+                    <b className="navy">{s.minutes} min</b>
+                  </span>
+                </div>
               </div>
-              <RecordTable rows={rows} />
+              <div className="card-body p-0">
+                <RecordTable rows={rows} />
+              </div>
             </div>
           );
         })}
@@ -310,95 +298,32 @@ function AttendanceDashboard() {
     );
   };
 
-  const input = {
-    padding: "9px 12px",
-    fontSize: 14,
-    border: "1px solid #C9D1DA",
-    borderRadius: 8,
-    outline: "none",
-    background: "#fff",
-    color: "#1B2430",
-    minWidth: 0,
-    fontFamily: "inherit",
-  };
-
-  const label = {
-    display: "block",
-    fontSize: 12,
-    fontWeight: 600,
-    color: "#5A6472",
-    marginBottom: 4,
-  };
-
-  const tabs = [
-    { id: "all", label: "All records" },
-    { id: "name", label: "Group by student" },
-    { id: "location", label: "Group by location" },
-  ];
-
   const selectedLocation = form.name ? ROSTER[form.name] : "";
 
   return (
-    <div style={{
-      fontFamily: "'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif",
-      background: "#F2F4F7",
-      minHeight: "100vh",
-      padding: "28px 20px",
-      boxSizing: "border-box",
-    }}>
-      <div style={{ maxWidth: 940, margin: "0 auto" }}>
-        <header style={{
-          marginBottom: 24,
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 10,
-        }}>
-          <div>
-            <h1 style={{
-              margin: 0,
-              fontSize: 26,
-              fontWeight: 800,
-              color: "#12233D",
-              letterSpacing: "-0.01em",
-            }}>Quran Tehfeez — Class Attendance</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 14, color: "#5A6472" }}>
-              Records saved to Google Sheets — shared across all devices.
-            </p>
-          </div>
-          <button
-            onClick={loadRecords}
-            style={{
-              padding: "7px 14px",
-              fontSize: 13,
-              fontWeight: 600,
-              borderRadius: 8,
-              cursor: "pointer",
-              border: "1px solid #C9D1DA",
-              background: "#fff",
-              color: "#3A4552",
-            }}
-          >↻ Refresh</button>
-        </header>
+    <div className="container py-4" style={{ maxWidth: 960 }}>
 
-        <section style={{
-          background: "#fff",
-          border: "1px solid #E3E7EC",
-          borderRadius: 10,
-          padding: 16,
-          marginBottom: 24,
-        }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1.6fr 0.9fr 1fr 0.9fr 0.7fr auto",
-            gap: 10,
-            alignItems: "end",
-          }}>
-            <div>
-              <label style={label}>Student</label>
+      {/* Header */}
+      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+        <div>
+          <h1 className="h4 fw-bold navy mb-1">Quran Tehfeez — Class Attendance</h1>
+          <p className="text-secondary small mb-0">
+            Records saved to Google Sheets — shared across all devices.
+          </p>
+        </div>
+        <button className="btn btn-sm btn-outline-navy" onClick={loadRecords}>
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Add record form */}
+      <div className="card shadow-sm mb-4">
+        <div className="card-body">
+          <div className="row g-3">
+            <div className="col-12 col-md-6 col-lg-4">
+              <label className="form-label small fw-semibold text-secondary mb-1">Student</label>
               <select
-                style={{ ...input, width: "100%", boxSizing: "border-box" }}
+                className="form-select"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               >
@@ -408,29 +333,24 @@ function AttendanceDashboard() {
                 ))}
               </select>
             </div>
-            <div>
-              <label style={label}>Location</label>
-              <input
-                style={{ ...input, width: "100%", boxSizing: "border-box", background: "#F2F4F7", color: "#5A6472" }}
-                value={selectedLocation}
-                placeholder="Auto"
-                readOnly
-                tabIndex={-1}
-              />
+            <div className="col-6 col-md-6 col-lg-2">
+              <label className="form-label small fw-semibold text-secondary mb-1">Location</label>
+              <input className="form-control bg-light text-secondary" value={selectedLocation}
+                     placeholder="Auto" readOnly tabIndex={-1} />
             </div>
-            <div>
-              <label style={label}>Class date</label>
+            <div className="col-6 col-md-4 col-lg-2">
+              <label className="form-label small fw-semibold text-secondary mb-1">Class date</label>
               <input
-                style={{ ...input, width: "100%", boxSizing: "border-box" }}
                 type="date"
+                className="form-control"
                 value={form.date}
                 onChange={(e) => setForm({ ...form, date: e.target.value })}
               />
             </div>
-            <div>
-              <label style={label}>Attendance</label>
+            <div className="col-6 col-md-4 col-lg-2">
+              <label className="form-label small fw-semibold text-secondary mb-1">Attendance</label>
               <select
-                style={{ ...input, width: "100%", boxSizing: "border-box" }}
+                className="form-select"
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
               >
@@ -439,82 +359,120 @@ function AttendanceDashboard() {
                 <option value="holiday">Holiday</option>
               </select>
             </div>
-            <div>
-              <label style={label}>Minutes</label>
+            <div className="col-6 col-md-4 col-lg-2">
+              <label className="form-label small fw-semibold text-secondary mb-1">Minutes</label>
               <input
-                style={{
-                  ...input, width: "100%", boxSizing: "border-box",
-                  background: form.status === "present" ? "#fff" : "#F2F4F7",
-                }}
-                placeholder="e.g. 30"
                 type="number"
                 min="1"
+                className={"form-control" + (form.status !== "present" ? " bg-light" : "")}
+                placeholder="e.g. 30"
                 disabled={form.status !== "present"}
                 value={form.status === "present" ? form.duration : ""}
                 onChange={(e) => setForm({ ...form, duration: e.target.value })}
               />
             </div>
-            <button
-              onClick={addRecord}
-              disabled={saving}
-              style={{
-                padding: "9px 18px",
-                fontSize: 14,
-                fontWeight: 700,
-                color: "#fff",
-                background: saving ? "#5A6472" : "#12233D",
-                border: "none",
-                borderRadius: 8,
-                cursor: saving ? "wait" : "pointer",
-                height: 38,
-              }}
-            >{saving ? "Saving…" : "Add"}</button>
-          </div>
-          {error && (
-            <div style={{ marginTop: 10, fontSize: 13, color: "#B3402A" }}>{error}</div>
-          )}
-        </section>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setView(t.id)}
-              style={{
-                padding: "7px 14px",
-                fontSize: 13,
-                fontWeight: 600,
-                borderRadius: 999,
-                cursor: "pointer",
-                border: view === t.id ? "1px solid #12233D" : "1px solid #C9D1DA",
-                background: view === t.id ? "#12233D" : "#fff",
-                color: view === t.id ? "#fff" : "#3A4552",
-              }}
-            >{t.label}</button>
-          ))}
-        </div>
-
-        {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "#5A6472" }}>
-            Loading records from Google Sheets…
-          </div>
-        ) : view === "all" ? (
-          records.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div style={{
-              background: "#fff",
-              border: "1px solid #E3E7EC",
-              borderRadius: 10,
-              overflow: "hidden",
-            }}>
-              <RecordTable rows={records} />
+            <div className="col-12">
+              <button
+                className="btn btn-navy w-100 w-md-auto"
+                disabled={saving}
+                onClick={addRecord}
+              >
+                {saving ? "Saving…" : "Add record"}
+              </button>
             </div>
+          </div>
+          {error && <div className="alert alert-danger py-2 small mt-3 mb-0">{error}</div>}
+        </div>
+      </div>
+
+      {/* Date range filter */}
+      <div className="card shadow-sm mb-3">
+        <div className="card-body py-2">
+          <div className="row g-2 align-items-end">
+            <div className="col-6 col-md-3">
+              <label className="form-label small fw-semibold text-secondary mb-1">From date</label>
+              <input
+                type="date"
+                className="form-control form-control-sm"
+                value={fromDate}
+                max={toDate || undefined}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
+            <div className="col-6 col-md-3">
+              <label className="form-label small fw-semibold text-secondary mb-1">To date</label>
+              <input
+                type="date"
+                className="form-control form-control-sm"
+                value={toDate}
+                min={fromDate || undefined}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+            <div className="col-12 col-md-6 d-flex align-items-center gap-2 flex-wrap">
+              {(fromDate || toDate) ? (
+                <React.Fragment>
+                  <button
+                    className="btn btn-sm btn-outline-navy"
+                    onClick={() => { setFromDate(""); setToDate(""); }}
+                  >Clear</button>
+                  <span className="small text-secondary">
+                    Showing <b className="navy">{filtered.length}</b> of {records.length} records
+                    {fromDate && toDate ? ` (${fromDate} → ${toDate})`
+                      : fromDate ? ` (from ${fromDate})`
+                      : ` (up to ${toDate})`}
+                  </span>
+                </React.Fragment>
+              ) : (
+                <span className="small text-secondary">Showing all {records.length} records</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* View tabs */}
+      <ul className="nav nav-pills flex-nowrap overflow-auto mb-3 gap-1">
+        {[
+          { id: "all", label: "All records" },
+          { id: "name", label: "By student" },
+          { id: "location", label: "By location" },
+        ].map((t) => (
+          <li className="nav-item" key={t.id}>
+            <button
+              className={"nav-link text-nowrap" + (view === t.id ? " active" : "")}
+              onClick={() => setView(t.id)}
+            >{t.label}</button>
+          </li>
+        ))}
+      </ul>
+
+      {/* Content */}
+      {loading ? (
+        <div className="text-center text-secondary py-5">
+          <div className="spinner-border spinner-border-sm me-2" role="status"></div>
+          Loading records from Google Sheets…
+        </div>
+      ) : view === "all" ? (
+        filtered.length === 0 ? (
+          records.length > 0 ? (
+            <div className="text-center text-secondary bg-white border rounded-3 py-5 px-3">
+              <div className="fw-semibold navy mb-1">No records in this date range</div>
+              <div className="small">Adjust the From/To dates or clear the filter.</div>
+            </div>
+          ) : (
+            <EmptyState />
           )
         ) : (
-          <GroupedView groupKey={view} />
-        )}
-      </div>
+          <div className="card shadow-sm">
+            <div className="card-body p-0">
+              <RecordTable rows={filtered} />
+            </div>
+          </div>
+        )
+      ) : (
+        <GroupedView groupKey={view} />
+      )}
     </div>
   );
 }
