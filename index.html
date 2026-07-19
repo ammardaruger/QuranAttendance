@@ -65,6 +65,12 @@
   }
   .group-header .gname { font-weight: 600; }
   .group-header .gsub { font-size: 0.78rem; opacity: 0.9; }
+  .group-header:hover { filter: brightness(1.06); }
+  .chevron {
+    display: inline-block; transition: transform 0.18s ease;
+    font-size: 1rem; opacity: 0.9; flex-shrink: 0;
+  }
+  .chevron.open { transform: rotate(180deg); }
 
   /* Buttons */
   .btn-checkin {
@@ -163,6 +169,19 @@ function AttendanceDashboard() {
   const [saving, setSaving] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  // Which group cards are expanded, keyed by "view:label". Collapsed by default.
+  const [openGroups, setOpenGroups] = useState({});
+
+  const toggleGroup = (key) =>
+    setOpenGroups((cur) => ({ ...cur, [key]: !cur[key] }));
+
+  const setAllGroups = (groupKey, labels, open) => {
+    setOpenGroups((cur) => {
+      const next = { ...cur };
+      labels.forEach((l) => { next[groupKey + ":" + l] = open; });
+      return next;
+    });
+  };
 
   // Records shown everywhere below, restricted to the chosen date range.
   const filtered = records.filter((r) => {
@@ -336,13 +355,37 @@ function AttendanceDashboard() {
   const GroupedView = ({ groupKey }) => {
     const groups = groupBy(groupKey);
     if (groups.length === 0) return <RangeEmpty />;
+    const labels = groups.map(([label]) => label);
+    const openCount = labels.filter((l) => openGroups[groupKey + ":" + l]).length;
     return (
       <div className="d-flex flex-column gap-3">
+        <div className="d-flex justify-content-end gap-2">
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => setAllGroups(groupKey, labels, true)}
+            disabled={openCount === labels.length}
+          >Expand all</button>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => setAllGroups(groupKey, labels, false)}
+            disabled={openCount === 0}
+          >Collapse all</button>
+        </div>
         {groups.map(([label, rows]) => {
           const s = summarize(rows);
+          const key = groupKey + ":" + label;
+          const open = !!openGroups[key];
           return (
             <div className="card" key={label}>
-              <div className="group-header">
+              <div
+                className={"group-header" + (open ? "" : " collapsed-header")}
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleGroup(key)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGroup(key); } }}
+                aria-expanded={open}
+                style={{ cursor: "pointer", borderRadius: open ? "14px 14px 0 0" : "14px" }}
+              >
                 <div className="avatar">{initials(label)}</div>
                 <div className="flex-grow-1 min-w-0">
                   <div className="gname text-truncate">{label}</div>
@@ -351,10 +394,16 @@ function AttendanceDashboard() {
                     {s.present} present · {s.absent} absent · {s.holiday} holiday · {s.minutes} min
                   </div>
                 </div>
+                <span className="badge rounded-pill text-bg-light me-1">
+                  {rows.length} {rows.length === 1 ? "record" : "records"}
+                </span>
+                <span className={"chevron" + (open ? " open" : "")}>▾</span>
               </div>
-              <div className="card-body p-0">
-                <RecordTable rows={rows} />
-              </div>
+              {open && (
+                <div className="card-body p-0">
+                  <RecordTable rows={rows} />
+                </div>
+              )}
             </div>
           );
         })}
