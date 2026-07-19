@@ -72,6 +72,25 @@
   }
   .chevron.open { transform: rotate(180deg); }
 
+  /* Student search suggestions */
+  .suggestions {
+    position: absolute; left: 0.75rem; right: 0.75rem; z-index: 1050;
+    background: #fff; border: 1px solid #d5dbe3; border-radius: 10px;
+    margin-top: 4px; max-height: 260px; overflow-y: auto;
+  }
+  .suggestion-item {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.55rem 0.75rem; cursor: pointer; font-size: 0.9rem;
+  }
+  .suggestion-item:hover, .suggestion-item.active { background: #f0f4fa; }
+  .suggestion-item + .suggestion-item { border-top: 1px solid #f0f2f5; }
+  .sug-avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    background: #e4e9f0; color: #5a6472;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 700;
+  }
+
   /* Buttons */
   .btn-checkin {
     background: linear-gradient(90deg, #1f7ae0, #2196f3);
@@ -171,6 +190,27 @@ function AttendanceDashboard() {
   const [toDate, setToDate] = useState("");
   // Which group cards are expanded, keyed by "view:label". Collapsed by default.
   const [openGroups, setOpenGroups] = useState({});
+  // Student search box
+  const [studentQuery, setStudentQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const suggestions = STUDENT_NAMES.filter((n) =>
+    n.toLowerCase().includes(studentQuery.trim().toLowerCase())
+  );
+
+  const pickStudent = (name) => {
+    setForm((f) => ({ ...f, name }));
+    setStudentQuery(name);
+    setShowSuggestions(false);
+  };
+
+  const onStudentInput = (val) => {
+    setStudentQuery(val);
+    setShowSuggestions(true);
+    // Typing invalidates the previous selection unless it's an exact match
+    const exact = STUDENT_NAMES.find((n) => n.toLowerCase() === val.trim().toLowerCase());
+    setForm((f) => ({ ...f, name: exact || "" }));
+  };
 
   const toggleGroup = (key) =>
     setOpenGroups((cur) => ({ ...cur, [key]: !cur[key] }));
@@ -250,6 +290,7 @@ function AttendanceDashboard() {
     setSaving(true);
     setRecords([rec, ...records]);
     setForm(emptyForm());
+    setStudentQuery("");
     try {
       const res = await api("POST", { action: "add", record: rec });
       if (!res.ok) {
@@ -487,18 +528,39 @@ function AttendanceDashboard() {
               <span className="section-title">Attendance</span>
             </div>
             <div className="row g-3">
-              <div className="col-12 col-md-6 col-lg-4">
+              <div className="col-12 col-md-6 col-lg-4 position-relative">
                 <label className="form-label small fw-semibold text-secondary mb-1">Student</label>
-                <select
-                  className="form-select"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                >
-                  <option value="">Select student…</option>
-                  {STUDENT_NAMES.map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  className={"form-control" + (studentQuery && !form.name ? " is-invalid" : "")}
+                  placeholder="Type to search students…"
+                  value={studentQuery}
+                  autoComplete="off"
+                  onChange={(e) => onStudentInput(e.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                />
+                {showSuggestions && studentQuery.trim() !== "" && (
+                  <div className="suggestions shadow">
+                    {suggestions.length === 0 ? (
+                      <div className="suggestion-item text-secondary fst-italic">
+                        No matching student
+                      </div>
+                    ) : (
+                      suggestions.map((n) => (
+                        <div
+                          key={n}
+                          className={"suggestion-item" + (n === form.name ? " active" : "")}
+                          onMouseDown={(e) => { e.preventDefault(); pickStudent(n); }}
+                        >
+                          <span className="sug-avatar">{initials(n)}</span>
+                          <span className="flex-grow-1">{n}</span>
+                          <span className="small text-secondary">{ROSTER[n]}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
               <div className="col-6 col-md-6 col-lg-2">
                 <label className="form-label small fw-semibold text-secondary mb-1">Location</label>
