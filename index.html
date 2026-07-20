@@ -252,6 +252,43 @@ function generatePdf(kind, label, rows, range) {
     14, y
   );
 
+  // For a location report, insert a per-student subtotal table (summed
+  // duration per student) before the full record-level detail.
+  if (kind === "location") {
+    const byName = {};
+    rows.forEach((r) => {
+      if (!byName[r.name]) byName[r.name] = { name: r.name, present: 0, absent: 0, holiday: 0, minutes: 0 };
+      const b = byName[r.name];
+      if (b[r.status] !== undefined) b[r.status]++;
+      b.minutes += r.duration;
+    });
+    const subRows = Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
+
+    y += 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(42, 49, 60);
+    doc.text("By Student", 14, y);
+
+    doc.autoTable({
+      startY: y + 4,
+      head: [["Student", "Present", "Absent", "Holiday", "Total Minutes"]],
+      body: subRows.map((s) => [s.name, String(s.present), String(s.absent), String(s.holiday), String(s.minutes)]),
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      headStyles: { fillColor: [91, 91, 214], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [244, 246, 249] },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(42, 49, 60);
+    doc.text("Individual Records", 14, y);
+    y += 2;
+  }
+
   // Records table (oldest first reads naturally in a report)
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
   const head = kind === "student"
@@ -458,6 +495,20 @@ function AttendanceDashboard() {
     return s;
   };
 
+  // Used for the "By location" view: within a location, subtotal each
+  // student's records — counts by status and summed class duration.
+  const summarizeByStudent = (rows) => {
+    const byName = {};
+    rows.forEach((r) => {
+      if (!byName[r.name]) byName[r.name] = { name: r.name, present: 0, absent: 0, holiday: 0, minutes: 0, count: 0 };
+      const b = byName[r.name];
+      if (b[r.status] !== undefined) b[r.status]++;
+      b.minutes += r.duration;
+      b.count++;
+    });
+    return Object.values(byName).sort((a, b) => a.name.localeCompare(b.name));
+  };
+
   const RecordTable = ({ rows }) => (
     <div className="table-responsive">
       <table className="table table-hover align-middle mb-0">
@@ -496,6 +547,38 @@ function AttendanceDashboard() {
       </table>
     </div>
   );
+
+  // Per-student subtotal table, used inside "By location" group cards —
+  // one row per student with counts and summed class duration.
+  const StudentSubtotalTable = ({ rows }) => {
+    const subs = summarizeByStudent(rows);
+    return (
+      <div className="table-responsive">
+        <table className="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th className="text-end">Present</th>
+              <th className="text-end">Absent</th>
+              <th className="text-end">Holiday</th>
+              <th className="text-end">Total Mins</th>
+            </tr>
+          </thead>
+          <tbody>
+            {subs.map((s) => (
+              <tr key={s.name}>
+                <td className="fw-semibold">{s.name}</td>
+                <td className="text-end">{s.present}</td>
+                <td className="text-end">{s.absent}</td>
+                <td className="text-end">{s.holiday}</td>
+                <td className="text-end fw-semibold">{s.minutes}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   const RangeEmpty = () => (
     <div className="card">
@@ -569,7 +652,22 @@ function AttendanceDashboard() {
               </div>
               {open && (
                 <div className="card-body p-0">
-                  <RecordTable rows={rows} />
+                  {groupKey === "location" ? (
+                    <React.Fragment>
+                      <StudentSubtotalTable rows={rows} />
+                      <div className="text-center border-top">
+                        <button
+                          className="btn btn-sm btn-link text-decoration-none"
+                          onClick={() => toggleGroup(key + ":detail")}
+                        >
+                          {openGroups[key + ":detail"] ? "Hide individual records ▲" : "Show individual records ▼"}
+                        </button>
+                      </div>
+                      {openGroups[key + ":detail"] && <RecordTable rows={rows} />}
+                    </React.Fragment>
+                  ) : (
+                    <RecordTable rows={rows} />
+                  )}
                 </div>
               )}
             </div>
