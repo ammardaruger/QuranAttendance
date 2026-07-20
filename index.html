@@ -101,6 +101,18 @@
   }
   .btn-report:hover { background: #f2f3fd; color: #4646c6; border-color: #5b5bd6; }
 
+  /* Add-student panel */
+  .add-student-panel {
+    background: #f7f8fa; border: 1px solid #e3e7ec; border-radius: 12px;
+    padding: 0.85rem;
+  }
+  .roster-scroll { max-height: 220px; overflow-y: auto; border: 1px solid #e3e7ec; border-radius: 10px; background: #fff; }
+  .roster-row {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 0.6rem; font-size: 0.85rem;
+  }
+  .roster-row + .roster-row { border-top: 1px solid #f0f2f5; }
+
   /* Buttons */
   .btn-checkin {
     background: linear-gradient(90deg, #1f7ae0, #2196f3);
@@ -136,8 +148,11 @@ const { useState, useEffect } = React;
 const API_URL = "https://script.google.com/macros/s/AKfycby2WTjMlnHXWBHhs7cP6_HQnytGBGTgfFtZWFwBt7aFKZcpI2xvcmUR2x3bZZaZe3Iy/exec";
 // ─────────────────────────────────────────────────────────────────────
 
-// ── Hardcoded roster (from Quran_Tehfeez.xlsx → Idara sheet) ─────────
-const ROSTER = {
+// ── Default roster (from Quran_Tehfeez.xlsx → Idara sheet) ───────────
+// Used as a fallback/seed only — the live roster is fetched from your
+// Google Sheet's "Roster" tab, so students added via the dashboard
+// persist there and sync across devices.
+const DEFAULT_ROSTER = {
   "Jeddah Students": "Jeddah",
   "Ammar Husnain Bharmal": "Jeddah",
   "Zahra Abbas Lokhandwala": "Jeddah",
@@ -164,8 +179,6 @@ const ROSTER = {
   "Mariyam Bai": "Dubai",
   "Arwa Bai": "Dubai",
 };
-
-const STUDENT_NAMES = Object.keys(ROSTER).sort((a, b) => a.localeCompare(b));
 
 const STATUS_BADGE = {
   present: "text-bg-success",
@@ -336,6 +349,7 @@ async function api(method, body) {
 
 function AttendanceDashboard() {
   const [records, setRecords] = useState([]);
+  const [roster, setRoster] = useState(DEFAULT_ROSTER);
   const [form, setForm] = useState(emptyForm());
   const [view, setView] = useState("all"); // all | name | location
   const [error, setError] = useState("");
@@ -343,13 +357,23 @@ function AttendanceDashboard() {
   const [saving, setSaving] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+
+  const studentNames = Object.keys(roster).sort((a, b) => a.localeCompare(b));
+  const knownLocations = Array.from(new Set(Object.values(roster))).sort((a, b) => a.localeCompare(b));
+
+  // Add-student panel
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newLocation, setNewLocation] = useState("");
+  const [addStudentError, setAddStudentError] = useState("");
+  const [addingStudent, setAddingStudent] = useState(false);
   // Which group cards are expanded, keyed by "view:label". Collapsed by default.
   const [openGroups, setOpenGroups] = useState({});
   // Student search box
   const [studentQuery, setStudentQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const suggestions = STUDENT_NAMES.filter((n) =>
+  const suggestions = studentNames.filter((n) =>
     n.toLowerCase().includes(studentQuery.trim().toLowerCase())
   );
 
@@ -363,7 +387,7 @@ function AttendanceDashboard() {
     setStudentQuery(val);
     setShowSuggestions(true);
     // Typing invalidates the previous selection unless it's an exact match
-    const exact = STUDENT_NAMES.find((n) => n.toLowerCase() === val.trim().toLowerCase());
+    const exact = studentNames.find((n) => n.toLowerCase() === val.trim().toLowerCase());
     setForm((f) => ({ ...f, name: exact || "" }));
   };
 
@@ -406,6 +430,11 @@ function AttendanceDashboard() {
       if (data.ok) {
         const cleaned = data.records.map((r) => ({ ...r, date: normalizeDate(r.date) }));
         setRecords(cleaned.sort((a, b) => Number(b.id) - Number(a.id)));
+        // Roster comes from the sheet's "Roster" tab. If the Apps Script
+        // hasn't been updated to return one, keep the built-in default.
+        if (data.roster && Object.keys(data.roster).length > 0) {
+          setRoster(data.roster);
+        }
       } else {
         setError("Could not load records: " + (data.error || "unknown error"));
       }
@@ -437,7 +466,7 @@ function AttendanceDashboard() {
     const rec = {
       id: String(Date.now()),
       name,
-      location: ROSTER[name],
+      location: roster[name],
       status: form.status,
       duration,
       date: form.date,
@@ -473,6 +502,53 @@ function AttendanceDashboard() {
     } catch (e) {
       setError("Delete failed — could not reach Google Sheets.");
       setRecords(backup);
+    }
+  };
+
+  const addStudent = async () => {
+    setAddStudentError("");
+    const name = newName.trim();
+    const location = newLocation.trim();
+
+    if (!name) return setAddStudentError("Enter the student's name.");
+    if (!location) return setAddStudentError("Enter the student's location.");
+    const dupe = studentNames.find((n) => n.toLowerCase() === name.toLowerCase());
+    if (dupe) return setAddStudentError(`"${dupe}" is already on the roster.`);
+
+    setAddingStudent(true);
+    const backup = roster;
+    setRoster((cur) => ({ ...cur, [name]: location }));
+    try {
+      const res = await api("POST", { action: "addStudent", record: { name, location } });
+      if (!res.ok) {
+        setAddStudentError("Save failed: " + (res.error || "unknown error"));
+        setRoster(backup);
+      } else {
+        setNewName("");
+        setNewLocation("");
+      }
+    } catch (e) {
+      setAddStudentError("Save failed — could not reach Google Sheets.");
+      setRoster(backup);
+    }
+    setAddingStudent(false);
+  };
+
+  const removeStudent = async (name) => {
+    setAddStudentError("");
+    const backup = roster;
+    const next = { ...roster };
+    delete next[name];
+    setRoster(next);
+    try {
+      const res = await api("POST", { action: "deleteStudent", name });
+      if (!res.ok) {
+        setAddStudentError("Remove failed: " + (res.error || "unknown error"));
+        setRoster(backup);
+      }
+    } catch (e) {
+      setAddStudentError("Remove failed — could not reach Google Sheets.");
+      setRoster(backup);
     }
   };
 
@@ -633,7 +709,7 @@ function AttendanceDashboard() {
                 <div className="flex-grow-1 min-w-0">
                   <div className="gname text-truncate">{label}</div>
                   <div className="gsub">
-                    {groupKey === "name" ? (ROSTER[label] || rows[0].location) + " · " : ""}
+                    {groupKey === "name" ? (roster[label] || rows[0].location) + " · " : ""}
                     {s.present} present · {s.absent} absent · {s.holiday} holiday · {s.minutes} min
                   </div>
                 </div>
@@ -677,7 +753,7 @@ function AttendanceDashboard() {
     );
   };
 
-  const selectedLocation = form.name ? ROSTER[form.name] : "";
+  const selectedLocation = form.name ? roster[form.name] : "";
 
   return (
     <React.Fragment>
@@ -751,7 +827,74 @@ function AttendanceDashboard() {
             <div className="d-flex align-items-center gap-2 mb-3">
               <span style={{ fontSize: "1.2rem" }}>🧑‍🏫</span>
               <span className="section-title">Attendance</span>
+              <button
+                className="btn btn-sm btn-ghost ms-auto"
+                onClick={() => { setShowAddStudent((v) => !v); setAddStudentError(""); }}
+              >{showAddStudent ? "Close" : "+ Add Student"}</button>
             </div>
+
+            {showAddStudent && (
+              <div className="add-student-panel mb-3">
+                <div className="row g-2 align-items-end">
+                  <div className="col-12 col-md-5">
+                    <label className="form-label small fw-semibold text-secondary mb-1">New student name</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="e.g. Fatema Rasheed"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                    />
+                  </div>
+                  <div className="col-8 col-md-4">
+                    <label className="form-label small fw-semibold text-secondary mb-1">Location</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="e.g. Jeddah"
+                      list="known-locations"
+                      value={newLocation}
+                      onChange={(e) => setNewLocation(e.target.value)}
+                    />
+                    <datalist id="known-locations">
+                      {knownLocations.map((l) => <option key={l} value={l} />)}
+                    </datalist>
+                  </div>
+                  <div className="col-4 col-md-3">
+                    <button
+                      className="btn btn-sm btn-navy w-100"
+                      disabled={addingStudent}
+                      onClick={addStudent}
+                    >{addingStudent ? "Adding…" : "Add"}</button>
+                  </div>
+                </div>
+                {addStudentError && (
+                  <div className="alert alert-danger py-2 small mt-2 mb-0">{addStudentError}</div>
+                )}
+
+                {studentNames.length > 0 && (
+                  <div className="roster-list mt-3">
+                    <div className="small fw-semibold text-secondary mb-1">
+                      Current roster ({studentNames.length})
+                    </div>
+                    <div className="roster-scroll">
+                      {studentNames.map((n) => (
+                        <div className="roster-row" key={n}>
+                          <span className="sug-avatar">{initials(n)}</span>
+                          <span className="flex-grow-1 text-truncate">{n}</span>
+                          <span className="small text-secondary me-2">{roster[n]}</span>
+                          <button
+                            className="btn btn-sm btn-link text-secondary p-0"
+                            title="Remove from roster"
+                            onClick={() => removeStudent(n)}
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="row g-3">
               <div className="col-12 col-md-6 col-lg-4 position-relative">
                 <label className="form-label small fw-semibold text-secondary mb-1">Student</label>
@@ -780,7 +923,7 @@ function AttendanceDashboard() {
                         >
                           <span className="sug-avatar">{initials(n)}</span>
                           <span className="flex-grow-1">{n}</span>
-                          <span className="small text-secondary">{ROSTER[n]}</span>
+                          <span className="small text-secondary">{roster[n]}</span>
                         </div>
                       ))
                     )}
